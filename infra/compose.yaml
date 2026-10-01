@@ -10,11 +10,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlops -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   mlflow:
     image: python:3.13-slim
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     working_dir: /app
     command:
       - /bin/sh
@@ -25,7 +31,7 @@ services:
         mlflow server \
           --host 0.0.0.0 \
           --port 5000 \
-          --backend-store-uri postgresql://mlops:mlops@postgres:5432/mlflow \
+          --backend-store-uri postgresql+psycopg2://mlops:mlops@postgres:5432/mlflow \
           --serve-artifacts \
           --artifacts-destination /app/storage/mlartifacts
     ports:
@@ -36,7 +42,8 @@ services:
   prefect:
     image: prefecthq/prefect:3.8.6-python3.13
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://mlops:mlops@postgres:5432/prefect
     command:
